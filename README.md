@@ -29,6 +29,18 @@ Src/
 - **Cross-platform** — macOS (ARM), Linux (x86_64), Windows (x86_64)
 - **Two frame formats** — `---FRAME_SEPARATOR---` and `=== FRAME NNNNN ===`
 
+## Download
+
+Pre-built binaries for [v1.0.0](https://github.com/yxpil/Fake_SSH_Play/releases/tag/v1.0.0-rust):
+
+| Platform | Binary |
+|---|---|
+| macOS (Apple Silicon) | [fakesshplay](https://github.com/yxpil/Fake_SSH_Play/releases/download/v1.0.0-rust/fakesshplay) |
+| Linux (x86_64) | [fakesshplay-linux](https://github.com/yxpil/Fake_SSH_Play/releases/download/v1.0.0-rust/fakesshplay-linux) |
+| Windows (x86_64) | [fakesshplay.exe](https://github.com/yxpil/Fake_SSH_Play/releases/download/v1.0.0-rust/fakesshplay.exe) |
+
+[Old JS version (v0.1.0)](https://github.com/yxpil/Fake_SSH_Play/releases/tag/v0.1.0-js) — original Node.js SSH audio honeypot.
+
 ## Quick Start
 
 ```bash
