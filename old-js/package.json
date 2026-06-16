@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "ansi-escapes": "^7.2.0",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "figlet": "^1.9.4",
+    "ssh2": "^1.17.0"
+  }
+}
