@@ -1,0 +1,42 @@
+[package]
+name = "fakesshplay"
+version = "0.1.0"
+edition = "2021"
+description = "SSH ASCII Art Honeypot — Bad Apple Animation in Rust"
+license = "MIT"
+
+[[bin]]
+name = "fakesshplay"
+path = "Src/main.rs"
+
+[dependencies]
+# SSH server
+russh = "0.45"
+russh-keys = "0.45"
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# Web server
+axum = "0.8"
+# HTTP client (IP geolocation)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+# Random
+rand = "0.8"
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Error handling
+anyhow = "1"
+thiserror = "2"
+# Async traits
+async-trait = "0.1"
+# Tower for axum
+tower = "0.5"
+
+[profile.release]
+opt-level = 2
+lto = true

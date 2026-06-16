@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>SSH蜜罐日志可视化（地区统计）</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { padding: 20px; font-family: Arial, sans-serif; background: #f5f5f5; }
+    .container { display: flex; gap: 20px; height: calc(100vh - 40px); }
+    .left-panel { width: 40%; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .right-panel { width: 60%; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .chart-box { height: 30%; margin-bottom: 20px; }
+    .timeline-box { height: 100%; overflow-y: auto; }
+    .timeline-item { padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 8px; border-radius: 4px; }
+    .timeline-item.attack { background: #fff0f0; border-left: 4px solid #dc143c; }
+    .timeline-item.connection { background: #f0f8ff; border-left: 4px solid #1e90ff; }
+    .stats-header { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+    .stats-item { display: inline-block; margin-right: 20px; font-size: 14px; color: #333; }
+    .stats-item strong { color: #dc143c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="left-panel">
+      <div class="stats-header">
+        <h3>SSH蜜罐统计</h3>
+        <div class="stats-item">总攻击数：<strong id="totalAttacks">0</strong></div>
+        <div class="stats-item">活跃连接：<strong id="activeConnections">0</strong></div>
+        <div class="stats-item">传输数据：<strong id="totalData">0</strong> KB</div>
+        <div class="stats-item">IP缓存：<strong id="ipCacheCount">0</strong></div>
+      </div>
+      <div class="chart-box">
+        <h4>认证方式占比</h4>
+        <div id="authPieChart" style="width: 100%; height: 90%;"></div>
+      </div>
+      <div class="chart-box">
+        <h4>攻击IP占比</h4>
+        <div id="ipPieChart" style="width: 100%; height: 90%;"></div>
+      </div>
+      <div class="chart-box">
+        <h4>地区分布占比</h4>
+        <div id="countryPieChart" style="width: 100%; height: 90%;"></div>
+      </div>
+    </div>
+    <div class="right-panel">
+      <h3>实时日志时间轴（最近100条）</h3>
+      <div class="timeline-box" id="timelineContainer"></div>
+    </div>
+  </div>
+
+  <script>
+    const authPieChart = echarts.init(document.getElementById('authPieChart'));
+    const ipPieChart = echarts.init(document.getElementById('ipPieChart'));
+    const countryPieChart = echarts.init(document.getElementById('countryPieChart'));
+
+    const pieOption = {
+      tooltip: { trigger: 'item' },
+      legend: { orient: 'vertical', left: 'left', textStyle: { fontSize: 10 } },
+      series: [{
+        name: '占比',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        data: [],
+        label: { show: true, formatter: '{b}: {c} ({d}%)', fontSize: 10 }
+      }]
+    };
+
+    authPieChart.setOption(pieOption);
+    ipPieChart.setOption(pieOption);
+    countryPieChart.setOption(pieOption);
+
+    function updateData() {
+      fetch('/api/logs/stats')
+        .then(res => res.json())
+        .then(data => {
+          if (data.code !== 200) return;
+          document.getElementById('totalAttacks').textContent = data.data.totalAttacks;
+          document.getElementById('activeConnections').textContent = data.data.activeConnections;
+          document.getElementById('totalData').textContent = data.data.totalDataTransferred;
+          document.getElementById('ipCacheCount').textContent = data.data.ipCacheCount;
+
+          authPieChart.setOption({ series: [{ data: data.data.pie }] });
+          ipPieChart.setOption({ series: [{ data: data.data.ipPie }] });
+          countryPieChart.setOption({ series: [{ data: data.data.countryPie }] });
+
+          const timelineContainer = document.getElementById('timelineContainer');
+          timelineContainer.innerHTML = '';
+          data.data.timeline.forEach(item => {
+            const itemEl = document.createElement('div');
+            itemEl.className = `timeline-item ${item.type}`;
+            itemEl.innerHTML = `
+              <div><strong>时间：</strong>${item.time}</div>
+              <div><strong>类型：</strong>${item.type === 'attack' ? '攻击' : '连接'}</div>
+              <div><strong>IP：</strong>${item.ip}</div>
+              <div><strong>地区：</strong>${item.country}</div>
+              <div><strong>事件：</strong>${item.event}</div>
+              <div><strong>ID：</strong>${item.id}</div>
+            `;
+            timelineContainer.appendChild(itemEl);
+          });
+        })
+        .catch(err => console.error('更新失败：', err));
+    }
+
+    updateData();
+    setInterval(updateData, 2000);
+    window.addEventListener('resize', () => {
+      authPieChart.resize();
+      ipPieChart.resize();
+      countryPieChart.resize();
+    });
+  </script>
+</body>
+</html>
