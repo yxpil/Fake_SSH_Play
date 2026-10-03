@@ -1,4 +1,10 @@
 # Fake_SSH_Play 测试说明
+- 测试完成：是（2026-10-04）
+- 测试日期：2026-10-04
+- 测试内容：单元 15（Src/Read/frames 解析 5、Src/Read/state 计数器/日志 8、Src/Tools/geoip 私网短路 2）；集成 1（tests/bootstrap_smoke.rs：空目录下真实二进制因缺 host key 非零退出）；注入 2（攻击者可控 username 含双引号被 serde 转义为 \"、newline 注入不破坏 JSONL 单行）；钩子 0（无钩子/插件机制）。
+- 运行命令：cargo test
+- 测试框架：Rust #[cfg(test)] + tests/ 集成测试
+- 模型：豆包（Doubao）生成
 
 ASCII Art SSH 蜜罐。本 crate 为纯二进制（无 lib target），测试分两部分。
 
