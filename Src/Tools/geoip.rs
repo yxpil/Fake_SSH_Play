@@ -77,3 +77,49 @@ pub async fn get_country(state: &SharedState, ip: &str) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    fn test_state() -> SharedState {
+        let dir = std::env::temp_dir().join(format!("fakessh-geoip-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        SharedState::new(
+            Vec::new(),
+            AppConfig {
+                host_key_path: dir.join("k"),
+                ascii_frames_path: dir.join("f"),
+                attack_log_path: dir.join("a"),
+                connection_log_path: dir.join("c"),
+                ssh_port: 1,
+                web_port: 1,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn private_and_local_ips_short_circuit_without_network() {
+        let s = test_state();
+        for ip in ["127.0.0.1", "::1", "192.168.1.5", "10.0.0.9", "unknown"] {
+            assert_eq!(get_country(&s, ip).await, "本地IP", "{ip} 应短路");
+        }
+        // 短路分支不应写缓存（也不发起网络请求）
+        assert!(s.ip_cache.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn public_ip_lookup_is_cached_after_call() {
+        // 用 127.0.0.1 走缓存分支：第一次短路返回本地IP（不写缓存）。
+        // 这里验证缓存命中路径：手动塞一个缓存项，再次查询应直接返回缓存值而不区分私网。
+        let s = test_state();
+        s.ip_cache
+            .lock()
+            .unwrap()
+            .insert("8.8.8.8".into(), "美国".into());
+        // 注意：8.8.8.8 不是私网，但缓存命中会在短路检查之后——
+        // get_country 先做私网判断（不命中），再查缓存（命中）。
+        assert_eq!(get_country(&s, "8.8.8.8").await, "美国");
+    }
+}

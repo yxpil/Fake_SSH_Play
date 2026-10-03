@@ -199,3 +199,139 @@ pub fn log_conn(
         conn_id, event, ip, country
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_state() -> SharedState {
+        let dir = std::env::temp_dir().join(format!("fakessh-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = AppConfig {
+            host_key_path: dir.join("host.key"),
+            ascii_frames_path: dir.join("frames.txt"),
+            attack_log_path: dir.join("attack.jsonl"),
+            connection_log_path: dir.join("conn.jsonl"),
+            ssh_port: 2222,
+            web_port: 7630,
+        };
+        SharedState::new(Vec::new(), cfg)
+    }
+
+    #[test]
+    fn attack_ids_are_monotonic_and_padded() {
+        let s = test_state();
+        assert_eq!(s.next_attack_id(), "ATTACK_000001");
+        assert_eq!(s.next_attack_id(), "ATTACK_000002");
+        assert_eq!(s.next_attack_id(), "ATTACK_000003");
+    }
+
+    #[test]
+    fn connection_set_add_remove_count() {
+        let s = test_state();
+        assert_eq!(s.active_count(), 0);
+        s.add_conn("c1".into());
+        s.add_conn("c2".into());
+        s.add_conn("c1".into()); // 集合去重
+        assert_eq!(s.active_count(), 2);
+        s.del_conn("c1");
+        assert_eq!(s.active_count(), 1);
+        s.del_conn("nope");
+        assert_eq!(s.active_count(), 1);
+    }
+
+    #[test]
+    fn add_data_accumulates() {
+        let s = test_state();
+        s.add_data(100);
+        s.add_data(50);
+        assert_eq!(s.total_data.load(Ordering::SeqCst), 150);
+    }
+
+    #[test]
+    fn safe_append_writes_line() {
+        let dir = std::env::temp_dir().join(format!("fakessh-append-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("log.txt");
+        safe_append(&p, "first");
+        safe_append(&p, "second");
+        let body = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(body, "first\nsecond\n");
+    }
+
+    #[test]
+    fn safe_append_bad_path_does_not_panic_failure_isolation() {
+        // 失败隔离：日志写到一个"目录"路径会失败，应仅 warn 不 panic，
+        // 调用方（SSH 任务）不会因此崩溃。
+        let dir = std::env::temp_dir().join(format!("fakessh-badpath-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        safe_append(&dir, "should fail because path is a directory");
+        // 走到这里即证明没有 panic
+    }
+
+    #[test]
+    fn log_attack_and_conn_push_access_log_in_order() {
+        let s = test_state();
+        log_attack(&s, "A1", "1.2.3.4", "CN", "root", "password", "brute");
+        log_conn(&s, "C1", "1.2.3.4", "CN", "connected", "");
+        let log = s.access_log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].log_type, "attack");
+        assert_eq!(log[0].auth_method.as_deref(), Some("password"));
+        assert_eq!(log[0].log_id, "A1");
+        assert_eq!(log[1].log_type, "connection");
+        assert_eq!(log[1].event.as_deref(), Some("connected"));
+    }
+
+    // --- 注入测试：攻击者可控的 username/details 进入 JSON 日志，
+    //     必须被 serde 正确转义（尤其是双引号），不能打破 JSON 字符串注入伪造字段。
+    #[test]
+    fn quote_in_username_is_json_escaped() {
+        // 含双引号，试图闭合 JSON 字符串注入伪造字段
+        let evil = "root\"}</script><script>alert(1)</script>";
+        let entry = AttackLog {
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            attack_id: "A1".into(),
+            source_ip: "1.2.3.4".into(),
+            country_name: "CN".into(),
+            username: evil.into(),
+            auth_method: "password".into(),
+            success: true,
+            attack_type: "ssh_brute_force".into(),
+            details: String::new(),
+            user_agent: "ssh_client".into(),
+            target_port: 22,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        // 内部双引号必须被转义为 \"，不能裸出现在 JSON 字符串里
+        assert!(json.contains("\\\""), "内部双引号应被转义: {json}");
+        // 整个串仍是合法 JSON，能原样反序列化回来（没有注入伪造字段）
+        let back: AttackLog = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.username, evil);
+    }
+
+    #[test]
+    fn newline_injection_does_not_break_jsonl_lines() {
+        // 攻击者在 details 里塞换行，试图伪造下一条日志行
+        let evil = "normal\n{\"fake\":\"log\",\"injected\":true}";
+        let entry = AttackLog {
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            attack_id: "A1".into(),
+            source_ip: "1.2.3.4".into(),
+            country_name: "CN".into(),
+            username: "root".into(),
+            auth_method: "password".into(),
+            success: true,
+            attack_type: "ssh_brute_force".into(),
+            details: evil.into(),
+            user_agent: "ssh_client".into(),
+            target_port: 22,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        // 序列化结果必须是单行（\n 被转义为 \\n）
+        assert!(!json.lines().nth(1).is_some(), "JSON 不得含裸换行: {json}");
+        assert!(json.contains("\\n"));
+    }
+}
